@@ -15,3 +15,8 @@ resource "sql_schema" "this" {
   source   = "file://migrations" # optional
 }
 ```
+
+Available dialects:
+
+* MySQL (mysql://url)
+* PostgreSQL (postgres://url)

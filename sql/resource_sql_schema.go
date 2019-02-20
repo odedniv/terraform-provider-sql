@@ -26,13 +26,14 @@ func resourceSQLSchema() *schema.Resource {
 			"database": &schema.Schema{
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: "Run migrations against this database (driver://url). Only MySQL (mysql://url) and PostgreSQL (postgres://url) drivers available.",
+				Sensitive:   true,
+				Description: "Run migrations against this database (driver://url). Available drivers: MySQL (mysql://url), PostgreSQL (postgres://url)",
 			},
 			"source": &schema.Schema{
 				Type:        schema.TypeString,
 				Optional:    true,
 				Default:     "file://migrations",
-				Description: "Location of the migrations (driver://url). Only Filesystem (file://url) driver available.",
+				Description: "Location of the migrations (driver://url). Only Filesystem (file://url) driver is available.",
 			},
 			"version": &schema.Schema{
 				Type:     schema.TypeString,

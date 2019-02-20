@@ -1,4 +1,4 @@
-TEST?=$$(go list ./...)
+TEST ?= $$(go list ./...)
 ifndef PGCONN
 	export PGCONN=postgres://postgres@localhost/terraform_provider_sql?sslmode=disable
 endif
