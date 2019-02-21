@@ -11,12 +11,9 @@ In your Terraform configuration:
 
 ```terraform
 resource "sql_schema" "this" {
-  database = "dialect://user@host/database"
-  source   = "file://migrations" # optional
+  driver     = "<database driver>" # mysql/postgres/cloudsql/cloudsqlpostgres
+  datasource = "<database connection string>"
+  directory  = "migrations" # optional
+  table      = "schema_migrations" # optional
 }
 ```
-
-Available dialects:
-
-* MySQL (mysql://url)
-* PostgreSQL (postgres://url)

@@ -1,6 +1,9 @@
 TEST ?= $$(go list ./...)
-ifndef PGCONN
-	export PGCONN=postgres://postgres@localhost/terraform_provider_sql?sslmode=disable
+ifndef POSTGRES_DATA_SOURCE
+	export POSTGRES_DATA_SOURCE=postgres://postgres@/terraform_provider_sql?sslmode=disable
+endif
+ifndef MYSQL_DATA_SOURCE
+	export MYSQL_DATA_SOURCE=root@/terraform_provider_sql
 endif
 
 default: build

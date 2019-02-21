@@ -1,17 +1,26 @@
 package sql
 
 import (
-	"errors"
-	"os"
-	"strconv"
+	"database/sql"
+	"fmt"
+	"strings"
 
-	"github.com/golang-migrate/migrate"
-	_ "github.com/golang-migrate/migrate/database/mysql"
-	_ "github.com/golang-migrate/migrate/database/postgres"
-	"github.com/golang-migrate/migrate/source"
-	_ "github.com/golang-migrate/migrate/source/file"
 	"github.com/hashicorp/terraform/helper/schema"
+	migrate "github.com/rubenv/sql-migrate"
+
+	_ "github.com/GoogleCloudPlatform/cloudsql-proxy/proxy/dialers/mysql"
+	_ "github.com/GoogleCloudPlatform/cloudsql-proxy/proxy/dialers/postgres"
+	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/lib/pq"
 )
+
+var dialects = map[string]string{
+	"mysql":            "mysql",
+	"postgres":         "postgres",
+	"cloudsql":         "mysql",
+	"cloudsqlpostgres": "postgres",
+}
+var availableDialects = []string{"mysql", "postgres", "cloudsql", "cloudsqlpostgres"}
 
 func resourceSQLSchema() *schema.Resource {
 	return &schema.Resource{
@@ -19,62 +28,76 @@ func resourceSQLSchema() *schema.Resource {
 		Read:          resourceSQLSchemaRead,
 		Update:        resourceSQLSchemaUpdate,
 		Delete:        resourceSQLSchemaDelete,
-		Exists:        resourceSQLSchemaExists,
 		CustomizeDiff: resourceSQLSchemaCustomizeDiff,
 
 		Schema: map[string]*schema.Schema{
-			"database": &schema.Schema{
+			"driver": &schema.Schema{
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: fmt.Sprintf("Database driver. Available drivers: %s", strings.Join(availableDialects, ", ")),
+				ValidateFunc: func(v interface{}, k string) (ws []string, errors []error) {
+					if dialects[v.(string)] == "" {
+						errors = append(errors, fmt.Errorf("Unknown database driver: %s, only know: %s", v, strings.Join(availableDialects, ", ")))
+					}
+					return
+				},
+			},
+			"datasource": &schema.Schema{
 				Type:        schema.TypeString,
 				Required:    true,
 				Sensitive:   true,
-				Description: "Run migrations against this database (driver://url). Available drivers: MySQL (mysql://url), PostgreSQL (postgres://url)",
+				Description: "Database connection string as compatible with sql.Open.",
 			},
-			"source": &schema.Schema{
+			"directory": &schema.Schema{
 				Type:        schema.TypeString,
 				Optional:    true,
-				Default:     "file://migrations",
-				Description: "Location of the migrations (driver://url). Only Filesystem (file://url) driver is available.",
+				Default:     "migrations",
+				Description: "Directory of the migrations.",
 			},
-			"version": &schema.Schema{
-				Type:     schema.TypeString,
+			"table": &schema.Schema{
+				Type:        schema.TypeString,
+				Optional:    true,
+				Default:     "schema_migrations",
+				Description: "Name of the table to use to store applied migrations.",
+			},
+			"migrations": &schema.Schema{
+				Type:     schema.TypeSet,
 				Computed: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
 			},
 		},
 	}
 }
 
 func resourceSQLSchemaCreate(d *schema.ResourceData, m interface{}) (err error) {
-	mig, err := buildMigrate(d)
+	db, err := getDatabase(d)
 	if err != nil {
 		return
 	}
-	err = mig.Up()
+	_, err = migrate.Exec(db, getDialect(d), getSource(d), migrate.Up)
 	if err != nil {
 		return
 	}
-	d.SetId(d.Get("database").(string))
+	d.SetId(d.Get("datasource").(string))
 	return resourceSQLSchemaRead(d, m)
 }
 
 func resourceSQLSchemaRead(d *schema.ResourceData, m interface{}) (err error) {
-	mig, err := buildMigrate(d)
+	db, err := getDatabase(d)
 	if err != nil {
 		return
 	}
-	v, dirty, err := mig.Version()
-	if err == migrate.ErrNilVersion {
-		err = nil
-		d.SetId("")
-		return
-	} else if dirty {
-		if err != nil {
-			err = errors.New("database is dirty")
-		}
-	}
+	databaseMigrations, err := migrate.GetMigrationRecords(db, getDialect(d))
 	if err != nil {
 		return
 	}
-	d.Set("version", strconv.FormatUint(uint64(v), 10))
+	migrations := make([]string, len(databaseMigrations))
+	for i, databaseMigration := range databaseMigrations {
+		migrations[i] = databaseMigration.Id
+	}
+	d.Set("migrations", migrations)
 	return
 }
 
@@ -83,57 +106,56 @@ func resourceSQLSchemaUpdate(d *schema.ResourceData, m interface{}) error {
 }
 
 func resourceSQLSchemaDelete(d *schema.ResourceData, m interface{}) (err error) {
-	mig, err := buildMigrate(d)
+	db, err := getDatabase(d)
 	if err != nil {
 		return
 	}
-	err = mig.Down()
-	if os.IsNotExist(err) {
-		err = nil
-	}
-	return
-}
-
-func resourceSQLSchemaExists(d *schema.ResourceData, m interface{}) (result bool, err error) {
-	mig, err := buildMigrate(d)
+	_, err = migrate.Exec(db, getDialect(d), getSource(d), migrate.Down)
 	if err != nil {
 		return
-	}
-	_, _, err = mig.Version()
-	if err == migrate.ErrNilVersion {
-		err = nil
-		result = false
-	} else {
-		result = true
 	}
 	return
 }
 
 func resourceSQLSchemaCustomizeDiff(d *schema.ResourceDiff, m interface{}) (err error) {
-	drv, err := source.Open(d.Get("source").(string))
+	sourceMigrations, err := getSource(d).FindMigrations()
 	if err != nil {
 		return
 	}
-	v, err := drv.First()
-	if err != nil {
-		return
+	migrations := make([]string, len(sourceMigrations))
+	for i, sourceMigration := range sourceMigrations {
+		migrations[i] = sourceMigration.Id
 	}
-	var n uint
-	for {
-		n, err = drv.Next(v)
-		if os.IsNotExist(err) {
-			err = nil
-			break
-		} else if err != nil {
-			return
-		} else {
-			v = n
-		}
-	}
-	err = d.SetNew("version", strconv.FormatUint(uint64(v), 10))
+	err = d.SetNew("migrations", migrations)
 	return
 }
 
-func buildMigrate(d *schema.ResourceData) (*migrate.Migrate, error) {
-	return migrate.New(d.Get("source").(string), d.Get("database").(string))
+type schemaResource interface {
+	Get(key string) interface{}
+}
+
+func getSource(d schemaResource) migrate.MigrationSource {
+	return migrate.FileMigrationSource{Dir: d.Get("directory").(string)}
+}
+
+func getDatabase(d schemaResource) (*sql.DB, error) {
+	migrate.SetTable(d.Get("table").(string))
+	driver := d.Get("driver").(string)
+	dataSource := d.Get("datasource").(string)
+
+	switch driver {
+	case "mysql", "cloudsql":
+		if strings.Contains(dataSource, "?") {
+			dataSource += "&parseTime=true"
+		} else {
+			dataSource += "?parseTime=true"
+		}
+		break
+	}
+
+	return sql.Open(driver, dataSource)
+}
+
+func getDialect(d schemaResource) string {
+	return dialects[d.Get("driver").(string)]
 }

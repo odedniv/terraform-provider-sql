@@ -11,41 +11,52 @@ import (
 
 	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/terraform"
-	_ "github.com/lib/pq"
 )
 
-func TestAccSqlSchema_defaultSource(t *testing.T) {
+func TestAccSqlSchema_postgres(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckSqlSchemaDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccSqlSchemaCreateDefaultSourceConfig,
+				Config: fmt.Sprintf(`
+resource "sql_schema" "this" {
+  driver     = "postgres"
+  datasource = "%s"
+  directory  = "migrations/default"
+}`, os.Getenv("POSTGRES_DATA_SOURCE")),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckSqlSchemaExists("table_1", "table_2"),
+					testAccCheckSqlSchemaExists("postgres", pgClient, "table_1", "table_2"),
 
-					resource.TestCheckResourceAttr("sql_schema.this", "database", os.Getenv("PGCONN")),
-					resource.TestCheckResourceAttr("sql_schema.this", "source", "file://migrations"),
+					resource.TestCheckResourceAttr("sql_schema.this", "driver", "postgres"),
+					resource.TestCheckResourceAttr("sql_schema.this", "datasource", os.Getenv("POSTGRES_DATA_SOURCE")),
+					resource.TestCheckResourceAttr("sql_schema.this", "directory", "migrations/default"),
 				),
 			},
 		},
 	})
 }
 
-func TestAccSqlSchema_explicitSource(t *testing.T) {
+func TestAccSqlSchema_mysql(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckSqlSchemaDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccSqlSchemaCreateExplicitSourceConfig,
+				Config: fmt.Sprintf(`
+resource "sql_schema" "this" {
+  driver     = "mysql"
+  datasource = "%s"
+  directory  = "migrations/default"
+}`, os.Getenv("MYSQL_DATA_SOURCE")),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckSqlSchemaExists("table_3", "table_4"),
+					testAccCheckSqlSchemaExists("mysql", mysqlClient, "table_1", "table_2"),
 
-					resource.TestCheckResourceAttr("sql_schema.this", "database", os.Getenv("PGCONN")),
-					resource.TestCheckResourceAttr("sql_schema.this", "source", "file://migrations/explicit"),
+					resource.TestCheckResourceAttr("sql_schema.this", "driver", "mysql"),
+					resource.TestCheckResourceAttr("sql_schema.this", "datasource", os.Getenv("MYSQL_DATA_SOURCE")),
+					resource.TestCheckResourceAttr("sql_schema.this", "directory", "migrations/default"),
 				),
 			},
 		},
@@ -59,21 +70,33 @@ func TestAccSqlSchema_update(t *testing.T) {
 		CheckDestroy: testAccCheckSqlSchemaDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccSqlSchemaUpdateStep1Config,
+				Config: fmt.Sprintf(`
+resource "sql_schema" "this" {
+  driver     = "postgres"
+  datasource = "%s"
+  directory  = "migrations/update/step1"
+}`, os.Getenv("POSTGRES_DATA_SOURCE")),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckSqlSchemaExists("table_1", "table_2"),
+					testAccCheckSqlSchemaExists("postgres", pgClient, "table_1", "table_2"),
 
-					resource.TestCheckResourceAttr("sql_schema.this", "database", os.Getenv("PGCONN")),
-					resource.TestCheckResourceAttr("sql_schema.this", "source", "file://migrations/update/step1"),
+					resource.TestCheckResourceAttr("sql_schema.this", "driver", "postgres"),
+					resource.TestCheckResourceAttr("sql_schema.this", "datasource", os.Getenv("POSTGRES_DATA_SOURCE")),
+					resource.TestCheckResourceAttr("sql_schema.this", "directory", "migrations/update/step1"),
 				),
 			},
 			{
-				Config: testAccSqlSchemaUpdateStep2Config,
+				Config: fmt.Sprintf(`
+resource "sql_schema" "this" {
+  driver     = "postgres"
+  datasource = "%s"
+  directory  = "migrations/update/step2"
+}`, os.Getenv("POSTGRES_DATA_SOURCE")),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckSqlSchemaExists("table_1", "table_2", "table_3", "table_4"),
+					testAccCheckSqlSchemaExists("postgres", pgClient, "table_1", "table_2", "table_3", "table_4"),
 
-					resource.TestCheckResourceAttr("sql_schema.this", "database", os.Getenv("PGCONN")),
-					resource.TestCheckResourceAttr("sql_schema.this", "source", "file://migrations/update/step2"),
+					resource.TestCheckResourceAttr("sql_schema.this", "driver", "postgres"),
+					resource.TestCheckResourceAttr("sql_schema.this", "datasource", os.Getenv("POSTGRES_DATA_SOURCE")),
+					resource.TestCheckResourceAttr("sql_schema.this", "directory", "migrations/update/step2"),
 				),
 			},
 		},
@@ -81,36 +104,27 @@ func TestAccSqlSchema_update(t *testing.T) {
 }
 
 func testAccCheckSqlSchemaDestroy(s *terraform.State) (err error) {
-	var _rez int
-	err = pgClient.QueryRow(`
-SELECT 1
-FROM information_schema.tables
-WHERE table_schema = 'public' AND table_name != 'schema_migrations'
-`).Scan(&_rez)
-	if err == _sql.ErrNoRows {
-		err = nil
+	var rez int
+	rez, err = getTableCount("postgres", pgClient, "table1", "table2", "table3", "table4")
+	if err != nil {
 		return
 	}
+	if rez != 0 {
+		err = errors.New("Schema still exists after destroy")
+	}
+	rez, err = getTableCount("mysql", mysqlClient, "table1", "table2", "table3", "table4")
 	if err != nil {
+		return
+	}
+	if rez != 0 {
 		err = errors.New("Schema still exists after destroy")
 	}
 	return
 }
 
-func testAccCheckSqlSchemaExists(tables ...interface{}) resource.TestCheckFunc {
+func testAccCheckSqlSchemaExists(dialect string, client *_sql.DB, tables ...interface{}) resource.TestCheckFunc {
 	return func(s *terraform.State) (err error) {
-		var rez int
-		// Creating a list of variables according to amount of tables (e.g ["$1", "$2", "$3"])
-		vars := make([]string, len(tables))
-		for i, _ := range tables {
-			vars[i] = fmt.Sprintf("$%d", i+1)
-		}
-		varsStr := strings.Join(vars, ", ")
-		err = pgClient.QueryRow(fmt.Sprintf(`
-SELECT COUNT(*)
-FROM information_schema.tables
-WHERE table_schema = 'public' AND table_name IN (%s)
-`, varsStr), tables...).Scan(&rez)
+		rez, err := getTableCount(dialect, client, tables...)
 		if err != nil {
 			return
 		}
@@ -121,25 +135,24 @@ WHERE table_schema = 'public' AND table_name IN (%s)
 	}
 }
 
-var testAccSqlSchemaCreateDefaultSourceConfig = fmt.Sprintf(`
-resource "sql_schema" "this" {
-  database = "%s"
-}`, os.Getenv("PGCONN"))
-
-var testAccSqlSchemaCreateExplicitSourceConfig = fmt.Sprintf(`
-resource "sql_schema" "this" {
-  database = "%s"
-  source   = "file://migrations/explicit"
-}`, os.Getenv("PGCONN"))
-
-var testAccSqlSchemaUpdateStep1Config = fmt.Sprintf(`
-resource "sql_schema" "this" {
-  database = "%s"
-  source   = "file://migrations/update/step1"
-}`, os.Getenv("PGCONN"))
-
-var testAccSqlSchemaUpdateStep2Config = fmt.Sprintf(`
-resource "sql_schema" "this" {
-  database = "%s"
-  source   = "file://migrations/update/step2"
-}`, os.Getenv("PGCONN"))
+func getTableCount(dialect string, client *_sql.DB, tables ...interface{}) (rez int, err error) {
+	// Creating a list of variables according to amount of tables (e.g ["$1", "$2", "$3"])
+	vars := make([]string, len(tables))
+	for i, _ := range tables {
+		switch dialect {
+		case "postgres":
+			vars[i] = fmt.Sprintf("$%d", i+1)
+			break
+		case "mysql":
+			vars[i] = "?"
+			break
+		}
+	}
+	varsStr := strings.Join(vars, ", ")
+	err = client.QueryRow(fmt.Sprintf(`
+SELECT COUNT(*)
+FROM information_schema.tables
+WHERE table_name IN (%s)
+`, varsStr), tables...).Scan(&rez)
+	return
+}
