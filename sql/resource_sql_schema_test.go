@@ -27,11 +27,12 @@ resource "sql_schema" "this" {
   directory  = "migrations/default"
 }`, os.Getenv("POSTGRES_DATA_SOURCE")),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckSqlSchemaExists("postgres", pgClient, "table_1", "table_2"),
+					testAccCheckSqlSchemaExists("postgres", pgClient, "schema_migrations", "table_1", "table_2"),
 
 					resource.TestCheckResourceAttr("sql_schema.this", "driver", "postgres"),
 					resource.TestCheckResourceAttr("sql_schema.this", "datasource", os.Getenv("POSTGRES_DATA_SOURCE")),
 					resource.TestCheckResourceAttr("sql_schema.this", "directory", "migrations/default"),
+					resource.TestCheckResourceAttr("sql_schema.this", "table", "schema_migrations"),
 				),
 			},
 		},
@@ -52,11 +53,12 @@ resource "sql_schema" "this" {
   directory  = "migrations/default"
 }`, os.Getenv("MYSQL_DATA_SOURCE")),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckSqlSchemaExists("mysql", mysqlClient, "table_1", "table_2"),
+					testAccCheckSqlSchemaExists("mysql", mysqlClient, "schema_migrations", "table_1", "table_2"),
 
 					resource.TestCheckResourceAttr("sql_schema.this", "driver", "mysql"),
 					resource.TestCheckResourceAttr("sql_schema.this", "datasource", os.Getenv("MYSQL_DATA_SOURCE")),
 					resource.TestCheckResourceAttr("sql_schema.this", "directory", "migrations/default"),
+					resource.TestCheckResourceAttr("sql_schema.this", "table", "schema_migrations"),
 				),
 			},
 		},
@@ -77,11 +79,12 @@ resource "sql_schema" "this" {
   directory  = "migrations/update/step1"
 }`, os.Getenv("POSTGRES_DATA_SOURCE")),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckSqlSchemaExists("postgres", pgClient, "table_1", "table_2"),
+					testAccCheckSqlSchemaExists("postgres", pgClient, "schema_migrations", "table_1", "table_2"),
 
 					resource.TestCheckResourceAttr("sql_schema.this", "driver", "postgres"),
 					resource.TestCheckResourceAttr("sql_schema.this", "datasource", os.Getenv("POSTGRES_DATA_SOURCE")),
 					resource.TestCheckResourceAttr("sql_schema.this", "directory", "migrations/update/step1"),
+					resource.TestCheckResourceAttr("sql_schema.this", "table", "schema_migrations"),
 				),
 			},
 			{
@@ -92,11 +95,12 @@ resource "sql_schema" "this" {
   directory  = "migrations/update/step2"
 }`, os.Getenv("POSTGRES_DATA_SOURCE")),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckSqlSchemaExists("postgres", pgClient, "table_1", "table_2", "table_3", "table_4"),
+					testAccCheckSqlSchemaExists("postgres", pgClient, "schema_migrations", "table_1", "table_2", "table_3", "table_4"),
 
 					resource.TestCheckResourceAttr("sql_schema.this", "driver", "postgres"),
 					resource.TestCheckResourceAttr("sql_schema.this", "datasource", os.Getenv("POSTGRES_DATA_SOURCE")),
 					resource.TestCheckResourceAttr("sql_schema.this", "directory", "migrations/update/step2"),
+					resource.TestCheckResourceAttr("sql_schema.this", "table", "schema_migrations"),
 				),
 			},
 		},
@@ -105,14 +109,14 @@ resource "sql_schema" "this" {
 
 func testAccCheckSqlSchemaDestroy(s *terraform.State) (err error) {
 	var rez int
-	rez, err = getTableCount("postgres", pgClient, "table1", "table2", "table3", "table4")
+	rez, err = getTableCount("postgres", pgClient, "schema_migrations", "table1", "table2", "table3", "table4")
 	if err != nil {
 		return
 	}
 	if rez != 0 {
 		err = errors.New("Schema still exists after destroy")
 	}
-	rez, err = getTableCount("mysql", mysqlClient, "table1", "table2", "table3", "table4")
+	rez, err = getTableCount("mysql", mysqlClient, "schema_migrations", "table1", "table2", "table3", "table4")
 	if err != nil {
 		return
 	}

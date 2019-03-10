@@ -73,6 +73,7 @@ func resourceSQLSchema() *schema.Resource {
 
 func resourceSQLSchemaCreate(d *schema.ResourceData, m interface{}) (err error) {
 	db, err := getDatabase(d)
+	defer db.Close()
 	if err != nil {
 		return
 	}
@@ -86,6 +87,7 @@ func resourceSQLSchemaCreate(d *schema.ResourceData, m interface{}) (err error) 
 
 func resourceSQLSchemaRead(d *schema.ResourceData, m interface{}) (err error) {
 	db, err := getDatabase(d)
+	defer db.Close()
 	if err != nil {
 		return
 	}
@@ -107,10 +109,15 @@ func resourceSQLSchemaUpdate(d *schema.ResourceData, m interface{}) error {
 
 func resourceSQLSchemaDelete(d *schema.ResourceData, m interface{}) (err error) {
 	db, err := getDatabase(d)
+	defer db.Close()
 	if err != nil {
 		return
 	}
 	_, err = migrate.Exec(db, getDialect(d), getSource(d), migrate.Down)
+	if err != nil {
+		return
+	}
+	_, err = db.Exec(fmt.Sprintf(`DROP TABLE %s;`, d.Get("table").(string)))
 	if err != nil {
 		return
 	}
