@@ -22,6 +22,7 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/hashstructure v1.0.0 // indirect
 	github.com/rubenv/sql-migrate v0.0.0-20190212093014-1007f53448d7
+	github.com/stretchr/testify v1.3.0
 	github.com/zclconf/go-cty v0.0.0-20190212192503-19dda139b164 // indirect
 	github.com/ziutek/mymysql v1.5.4 // indirect
 	golang.org/x/crypto v0.0.0-20190219172222-a4c6cb3142f2 // indirect

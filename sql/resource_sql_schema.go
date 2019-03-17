@@ -3,6 +3,7 @@ package sql
 import (
 	"database/sql"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/hashicorp/terraform/helper/schema"
@@ -71,6 +72,13 @@ func resourceSQLSchema() *schema.Resource {
 	}
 }
 
+var idPattern = regexp.MustCompile(`^(.*?://).*(@.*?)(\?.*)?$`)
+
+// Removes credentials and parameters from datasource: "dialect://username:password@host?parameteres" -> "dialect://@host"
+func idFromDataSource(datasource string) string {
+	return idPattern.ReplaceAllString(datasource, "$1$2")
+}
+
 func resourceSQLSchemaCreate(d *schema.ResourceData, m interface{}) (err error) {
 	db, err := getDatabase(d)
 	defer db.Close()
@@ -81,7 +89,7 @@ func resourceSQLSchemaCreate(d *schema.ResourceData, m interface{}) (err error) 
 	if err != nil {
 		return
 	}
-	d.SetId(d.Get("datasource").(string))
+	d.SetId(idFromDataSource(d.Get("datasource").(string)))
 	return resourceSQLSchemaRead(d, m)
 }
 

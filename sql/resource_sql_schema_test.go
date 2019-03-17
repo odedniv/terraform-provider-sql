@@ -11,7 +11,16 @@ import (
 
 	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/terraform"
+	"github.com/stretchr/testify/assert"
 )
+
+func TestIdFromDataSource(t *testing.T) {
+	assert.Equal(t, "dialect://@host", idFromDataSource("dialect://username:password@host?parameters"))
+	assert.Equal(t, "dialect://@host", idFromDataSource("dialect://username:password@host"))
+	assert.Equal(t, "dialect://@host", idFromDataSource("dialect://username:@host"))
+	assert.Equal(t, "dialect://@host", idFromDataSource("dialect://@host"))
+	assert.Equal(t, "not connection string", idFromDataSource("not connection string"))
+}
 
 func TestAccSqlSchema_postgres(t *testing.T) {
 	resource.Test(t, resource.TestCase{
