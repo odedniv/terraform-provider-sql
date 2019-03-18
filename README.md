@@ -2,7 +2,7 @@
 
 Terraform provider for managing SQL schemas using migrations.
 
-This plugin uses [golang-migrate/migrate](https://github.com/golang-migrate/migrate),
+This plugin uses [rubenv/sql-migrate](https://github.com/rubenv/sql-migrate),
 it is recommended to go read how it works before using this provider.
 
 ## Usage
