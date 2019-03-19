@@ -7,6 +7,21 @@ it is recommended to go read how it works before using this provider.
 
 ## Usage
 
+### Installation
+
+Build the provider and put it in Terraform's third-party providers directory in `~/.terraform.d/plugins`:
+
+```bash
+go get github.com/odedniv/terraform-provider-sql
+mkdir -p ~/.terraform.d/plugins
+go build -o ~/.terraform.d/plugins/terraform-provider-sql github.com/odedniv/terraform-provider-sql
+```
+
+I recommend using [Go modules](https://github.com/golang/go/wiki/Modules) to ensure
+using the same version in development and production.
+
+### Configuration
+
 In your Terraform configuration:
 
 ```terraform
